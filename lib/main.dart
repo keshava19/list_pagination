@@ -31,10 +31,11 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  var cacheData = Map<int, Employee>();
+  var cachedData = Map<int, Employee>();
   var pageLoaded = Map<int, bool>();
 
   int _total = 0;
+  int _pageSize = 20;
 
   @override
   void initState() {
@@ -47,28 +48,49 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    var listView = ListView.builder(
-      itemCount: _total,
-      itemBuilder: (BuildContext context, int index) {
-        Employee employee = _getEmployee(index);
-        return ListTile(
-          leading: CircleAvatar(
-            child: Text(index.toString()),
-            radius: 20.0,
-            backgroundColor: randomColor,
-          ),
-          title: Text(employee.displayName),
-          subtitle: Text(employee.jobtitle),
-        );
-      },
-    );
+
+    Widget _getEmployeeDirectory() {
+
+      Widget scrollableListView = Scrollbar(
+        child: ListView.builder(
+          addAutomaticKeepAlives: false,
+          itemCount: _total,
+          itemBuilder: (BuildContext context, int index) {
+            Employee employee = _getEmployee(index);
+            return ListTile(
+              leading: CircleAvatar(
+                child: Text(employee.displayName[0], style: TextStyle(color: Colors.white),),
+                radius: 20.0,
+                backgroundColor: randomColor,
+              ),
+              title: Text(employee.displayName),
+              subtitle: Text(employee.jobtitle),
+            );
+          },
+        ),
+      );
+
+      return scrollableListView;
+    }
 
     return new Scaffold(
       appBar: new AppBar(
         title: new Text(widget.title),
       ),
-      body: Scrollbar(child: listView)
+      body: _getEmployeeDirectory()
     );
+  }
+
+  Future<String> _getJson(int page, int size) async {
+
+    Pagination pagination = Pagination(page, size);
+    Map<String, dynamic> data = pagination.toJson();
+    String parameter = json.encode(data);
+    String url = 'http://10.0.3.147:8888/employees/$parameter';
+
+    final response = await http.get(url);
+
+    return response.body;
   }
 
   Future<List<Employee>> _getEmployees(int page, int size) async {
@@ -76,37 +98,22 @@ class _MyHomePageState extends State<MyHomePage> {
 
     List list = json.decode(jsonString);
 
-    var employees = List<Employee>();
-    list.forEach((employee) {
-      Map map = employee as Map;
-      employees.add(Employee.fromJson(map));
-    });
+    List<Employee> employees = List();
+
+    list.forEach((jsonMap) => employees.add(Employee.fromJson(jsonMap)));
 
     return employees;
   }
 
-  Future<String> _getJson(int page, int size) async {
-
-    Pagination pagination = Pagination(page, size);
-    Map<String, dynamic> data = pagination.toJson();
-    String params = json.encode(data);
-    String url = 'http://10.0.3.147:8888/employees/$params';
-
-    final response = await http.get(url);
-
-    return response.body;
-  }
-
   Employee _getEmployee(int index) {
-    Employee employee = cacheData[index];
+    Employee employee = cachedData[index];
     if(employee == null) {
-      int page = index ~/ 20;
+      int page = index ~/ _pageSize;
       if(!pageLoaded.containsKey(page)) {
         pageLoaded.putIfAbsent(page, () => true);
-        _getEmployees(page, 20)
+        _getEmployees(page, _pageSize)
             .then((List<Employee> employees) => _updateEmployees(page, employees));
       }
-      //print(cacheData);
       employee = Employee.loading();
     }
     return employee;
@@ -114,8 +121,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   _updateEmployees(int page, List<Employee> employees) {
     setState(() {
-      for(int i = 0; i < employees.length; i++){
-        cacheData.putIfAbsent(page*employees.length + i, () => employees.elementAt(i));
+      for(int index = 0; index < employees.length; index++){
+        cachedData.putIfAbsent(page * _pageSize + index, () => employees.elementAt(index));
       }
     });
   }
